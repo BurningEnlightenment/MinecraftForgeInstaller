@@ -12,6 +12,7 @@ import java.util.Locale;
 import javax.swing.JOptionPane;
 import javax.swing.UIManager;
 
+import joptsimple.ArgumentAcceptingOptionSpec;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpecBuilder;
@@ -26,14 +27,15 @@ public class SimpleInstaller {
     {
         setupLogger();
         OptionParser parser = new OptionParser();
-        OptionSpecBuilder serverInstallOption = parser.accepts("installServer", "Install a server to the current directory");
         OptionSpecBuilder extractOption = parser.accepts("extract", "Extract the contained jar file");
         OptionSpecBuilder helpOption = parser.acceptsAll(Arrays.asList("h", "help"),"Help with this installer");
+        ArgumentAcceptingOptionSpec<String> installTypeOption = parser.acceptsAll(Arrays.asList("t", "type"), "Installation type; either CLIENT or SERVER").withRequiredArg();
+        ArgumentAcceptingOptionSpec<String> installDirOption = parser.acceptsAll(Arrays.asList("d", "directory"), "The installation directory").withRequiredArg();
         OptionSet optionSet = parser.parse(args);
 
         if (optionSet.specs().size()>0)
         {
-            handleOptions(parser, optionSet, serverInstallOption, extractOption, helpOption);
+            handleOptions(parser, optionSet, extractOption, helpOption, installTypeOption, installDirOption);
         }
         else
         {
@@ -41,7 +43,8 @@ public class SimpleInstaller {
         }
     }
 
-    private static void handleOptions(OptionParser parser, OptionSet optionSet, OptionSpecBuilder serverInstallOption, OptionSpecBuilder extractOption, OptionSpecBuilder helpOption) throws IOException
+    private static void handleOptions(OptionParser parser, OptionSet optionSet, OptionSpecBuilder extractOption, OptionSpecBuilder helpOption,
+                                      ArgumentAcceptingOptionSpec<String> installTypeOption, ArgumentAcceptingOptionSpec<String> installDirOption) throws IOException
     {
         String path = VersionInfo.class.getProtectionDomain().getCodeSource().getLocation().getPath();
         if (path.contains("!/"))
@@ -51,28 +54,61 @@ public class SimpleInstaller {
             return;
         }
 
-        if (optionSet.has(serverInstallOption))
+        if (optionSet.has(installTypeOption) || optionSet.has(installDirOption))
         {
-            try
+            String installDir = optionSet.has(installDirOption) ? optionSet.valueOf(installDirOption) : ".";
+            String type = (optionSet.has(installTypeOption) ? optionSet.valueOf(installTypeOption) : "SERVER").toUpperCase();
+
+            switch (type)
             {
-                VersionInfo.getVersionTarget();
-                ServerInstall.headless = true;
-                System.out.println("Installing server to current directory");
-                if (!InstallerAction.SERVER.run(new File(".")))
+            case "CLIENT":
+                try
                 {
-                    System.err.println("There was an error during server installation");
+                    VersionInfo.getVersionTarget();
+                    //ServerInstall.headless = true;
+                    System.out.println("Installing the client profile to: " + installDir);
+                    if (!InstallerAction.CLIENT.run(new File(installDir)))
+                    {
+                        System.err.println("There was an error during client profile installation");
+                        System.exit(1);
+                    }
+                    System.out.println("The client profile was successfully installed, you should now be able to select it through the minecraft launcher.");
+                    System.out.println("You can delete this installer file now if you wish");
+                    System.exit(0);
+                }
+                catch (Throwable e)
+                {
+                    System.err.println("A problem installing the client profile was detected, client profile install cannot continue");
                     System.exit(1);
                 }
-                else
+                break;
+            case "SERVER":
+                try
                 {
-                    System.out.println("The server installed successfully, you should now be able to run the file "+VersionInfo.getContainedFile());
-                    System.out.println("You can delete this installer file now if you wish");
+                    VersionInfo.getVersionTarget();
+                    ServerInstall.headless = true;
+                    System.out.println("Installing server to: " + installDir);
+                    if (!InstallerAction.SERVER.run(new File(installDir)))
+                    {
+                        System.err.println("There was an error during server installation");
+                        System.exit(1);
+                    }
+                    else
+                    {
+                        System.out.println("The server installed successfully, you should now be able to run the file "+ VersionInfo.getContainedFile());
+                        System.out.println("You can delete this installer file now if you wish");
+                    }
+                    System.exit(0);
                 }
-                System.exit(0);
-            }
-            catch (Throwable e)
-            {
-                System.err.println("A problem installing the server was detected, server install cannot continue");
+                catch (Throwable e)
+                {
+                    System.err.println("A problem installing the server was detected, server install cannot continue");
+                    System.exit(1);
+                }
+                break;
+            default:
+                System.err.println("Invalid installation type option specified: " + type + "\n");
+                parser.printHelpOn(System.err);
                 System.exit(1);
             }
         }
